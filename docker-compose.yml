@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with TimescaleDB extension
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    container_name: analytics-postgres
+    environment:
+      POSTGRES_DB: analytics
+      POSTGRES_USER: ${DB_USER:-analytics_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-analytics_pass}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-analytics_user} -d analytics"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - analytics-network
+
+  # FastAPI application
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: analytics-api
+    environment:
+      - DB_URL=postgresql+asyncpg://${DB_USER:-analytics_user}:${DB_PASSWORD:-analytics_pass}@postgres:5432/analytics
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-10}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-20}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - MAX_BULK_SIZE=${MAX_BULK_SIZE:-1000}
+      - MAX_GZIP_SIZE=${MAX_GZIP_SIZE:-10485760}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - analytics-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: analytics-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - analytics-network
+    profiles:
+      - tools
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  analytics-network:
+    driver: bridge
