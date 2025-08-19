@@ -34,7 +34,21 @@ cp env.example .env
 vim .env
 ```
 
-### 2. Docker Compose로 실행
+### 2. 가상환경 설정 (권장)
+
+```bash
+# 가상환경 생성
+python3 -m venv venv
+
+# 가상환경 활성화
+source venv/bin/activate  # Linux/Mac
+# venv\Scripts\activate  # Windows
+
+# 의존성 설치
+pip install -r requirements.txt
+```
+
+### 3. Docker Compose로 실행
 
 ```bash
 # 모든 서비스 시작
@@ -47,7 +61,7 @@ docker-compose logs -f api
 docker-compose ps
 ```
 
-### 3. API 테스트
+### 4. API 테스트
 
 ```bash
 # 헬스체크
@@ -142,13 +156,9 @@ CREATE TABLE analytics.message_archives (
 ### 로컬 개발 환경
 
 ```bash
-# 가상환경 생성
-python -m venv venv
+# 가상환경 활성화
 source venv/bin/activate  # Linux/Mac
 # venv\Scripts\activate  # Windows
-
-# 의존성 설치
-pip install -r requirements.txt
 
 # 개발 서버 실행
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -157,14 +167,18 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ### 데이터베이스 마이그레이션
 
 ```bash
-# Alembic 초기화 (필요시)
-alembic init alembic
+# 가상환경 활성화 후
+source venv/bin/activate
 
-# 마이그레이션 생성
-alembic revision --autogenerate -m "Initial migration"
+# 마이그레이션 상태 확인
+python -m alembic current
+python -m alembic history
 
-# 마이그레이션 적용
-alembic upgrade head
+# 마이그레이션 실행
+python -m alembic upgrade head
+
+# 새 마이그레이션 생성
+python -m alembic revision --autogenerate -m "Add new feature"
 ```
 
 ## 모니터링
@@ -241,6 +255,15 @@ ALTER SYSTEM SET timescaledb.max_background_workers = 8;
    # Docker 메모리 제한 증가
    docker-compose down
    docker system prune
+   ```
+
+4. **가상환경 문제**
+   ```bash
+   # 가상환경 재생성
+   rm -rf venv
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
    ```
 
 ## 라이선스
