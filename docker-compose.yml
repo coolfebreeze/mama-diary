@@ -36,6 +36,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - MAX_BULK_SIZE=${MAX_BULK_SIZE:-1000}
       - MAX_GZIP_SIZE=${MAX_GZIP_SIZE:-10485760}
+      - CHUNK_TIME_INTERVAL_HOURS=${CHUNK_TIME_INTERVAL_HOURS:-24}
     ports:
       - "8000:8000"
     depends_on:

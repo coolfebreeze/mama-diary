@@ -128,12 +128,13 @@ CREATE TABLE analytics.message_archives (
 | `MAX_GZIP_SIZE` | `10485760` | 최대 gzip 크기 (10MB) |
 | `COMPRESSION_AFTER_DAYS` | `7` | 압축 시작 일수 |
 | `RETENTION_DAYS` | `180` | 데이터 보존 일수 |
+| `CHUNK_TIME_INTERVAL_HOURS` | `24` | 청크 시간 간격 (시간 단위) |
 
 ### TimescaleDB 정책
 
 - **압축**: 7일 후 자동 압축
 - **보존**: 180일 후 자동 삭제
-- **청크**: 일별 파티셔닝
+- **청크**: 24시간(1일) 파티셔닝
 - **인덱스**: 시간, 팀, 사용자, 서비스별 최적화
 
 ## 개발

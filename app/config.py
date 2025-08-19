@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # TimescaleDB settings
     COMPRESSION_AFTER_DAYS: int = 7
     RETENTION_DAYS: int = 180
-    CHUNK_TIME_INTERVAL: str = "1 day"
+    CHUNK_TIME_INTERVAL_HOURS: int = 24  # 24 hours = 1 day
     
     # Logging
     LOG_LEVEL: str = "INFO"
