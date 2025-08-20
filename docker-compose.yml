@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-analytics_pass}
       POSTGRES_HOST_AUTH_METHOD: scram-sha-256
     ports:
-      - "127.0.0.1:5432:5432"  # localhost only
+      - "9100:5432"  # localhost only
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -50,7 +50,7 @@ services:
     environment:
       - DB_URL=postgresql+asyncpg://${DB_USER:-analytics_user}:${DB_PASSWORD:-analytics_pass}@postgres:5432/analytics
     ports:
-      - "127.0.0.1:8000:8000"  # localhost only
+      - "9101:8000"  # localhost only
     depends_on:
       postgres:
         condition: service_healthy
@@ -96,7 +96,7 @@ services:
       PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: 'True'
       PGADMIN_CONFIG_LOGIN_BANNER: 'Analytics Database Management'
     ports:
-      - "127.0.0.1:5050:80"  # localhost only
+      - "9102:80"  # localhost only
     depends_on:
       postgres:
         condition: service_healthy
