@@ -3,42 +3,54 @@ version: '3.8'
 services:
   # PostgreSQL with TimescaleDB extension
   postgres:
-    image: timescale/timescaledb:latest-pg15
+    image: timescale/timescaledb:2.11.2-pg15
     container_name: analytics-postgres
     environment:
       POSTGRES_DB: analytics
       POSTGRES_USER: ${DB_USER:-analytics_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-analytics_pass}
-      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"  # localhost only
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-analytics_user} -d analytics"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
     networks:
       - analytics-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # FastAPI application
   api:
     build:
       context: .
       dockerfile: Dockerfile
+      target: production
     container_name: analytics-api
+    env_file:
+      - .env
     environment:
       - DB_URL=postgresql+asyncpg://${DB_USER:-analytics_user}:${DB_PASSWORD:-analytics_pass}@postgres:5432/analytics
-      - DB_POOL_SIZE=${DB_POOL_SIZE:-10}
-      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-20}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - MAX_BULK_SIZE=${MAX_BULK_SIZE:-1000}
-      - MAX_GZIP_SIZE=${MAX_GZIP_SIZE:-10485760}
-      - CHUNK_TIME_INTERVAL_HOURS=${CHUNK_TIME_INTERVAL_HOURS:-24}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"  # localhost only
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,28 +64,74 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/tmp
 
   # Optional: pgAdmin for database management
   pgadmin:
-    image: dpage/pgadmin4:latest
+    image: dpage/pgadmin4:8.5
     container_name: analytics-pgadmin
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
       PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: 'True'
+      PGADMIN_CONFIG_LOGIN_BANNER: 'Analytics Database Management'
     ports:
-      - "5050:80"
+      - "127.0.0.1:5050:80"  # localhost only
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - analytics-network
     profiles:
       - tools
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/misc/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/postgres
 
 networks:
   analytics-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

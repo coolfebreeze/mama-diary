@@ -127,6 +127,7 @@ logs/
 .env.local
 .env.production
 .env.staging
+data/
 
 # Docker
 .dockerignore
