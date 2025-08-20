@@ -23,7 +23,7 @@ def upgrade() -> None:
     # Create analytics schema
     op.execute("CREATE SCHEMA IF NOT EXISTS analytics;")
     
-    # Create usage_events table
+    # Create usage_events table with TimescaleDB-compatible constraints
     op.create_table('usage_events',
         sa.Column('event_id', postgresql.UUID(as_uuid=False), nullable=False),
         sa.Column('event_time', sa.DateTime(timezone=True), nullable=False),
@@ -39,7 +39,8 @@ def upgrade() -> None:
         sa.Column('prompt', sa.Text(), nullable=True),
         sa.Column('extra', sa.JSON(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('now()')),
-        sa.PrimaryKeyConstraint('event_id'),
+        # TimescaleDB requirement: Primary Key must include event_time (partitioning key)
+        sa.PrimaryKeyConstraint('event_time', 'event_id'),
         schema='analytics'
     )
     
@@ -66,13 +67,16 @@ def upgrade() -> None:
         schema='analytics'
     )
     
-    # Create indexes
+    # Create indexes (all include event_time for TimescaleDB compatibility)
     op.create_index('idx_usage_events_time', 'usage_events', ['event_time'], unique=False, schema='analytics')
     op.create_index('idx_usage_events_team_time', 'usage_events', ['team', 'event_time'], unique=False, schema='analytics')
     op.create_index('idx_usage_events_user_time', 'usage_events', ['user_id', 'event_time'], unique=False, schema='analytics')
     op.create_index('idx_usage_events_service_model', 'usage_events', ['service', 'model', 'event_time'], unique=False, schema='analytics')
     op.create_index('idx_usage_events_status_time', 'usage_events', ['status_code', 'event_time'], unique=False, schema='analytics')
     op.create_index('idx_usage_events_provider', 'usage_events', ['provider', 'event_time'], unique=False, schema='analytics')
+    
+    # Create unique index for event_id (for foreign key reference) - includes event_time
+    op.create_index('idx_usage_events_event_id_unique', 'usage_events', ['event_time', 'event_id'], unique=True, schema='analytics')
     
     op.create_index('idx_message_archives_user', 'message_archives', ['user_id'], unique=False, schema='analytics')
     op.create_index('idx_message_archives_service', 'message_archives', ['service'], unique=False, schema='analytics')
