@@ -90,7 +90,6 @@ services:
     image: dpage/pgadmin4:8.5
     container_name: analytics-pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
       PGADMIN_CONFIG_SERVER_MODE: 'False'
       PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: 'True'
