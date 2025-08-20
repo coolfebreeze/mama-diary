@@ -4,6 +4,7 @@ from .config import settings
 import logging
 import subprocess
 import sys
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -17,13 +18,19 @@ async def ensure_timescale_extension(engine: AsyncEngine):
         logger.error(f"Failed to enable TimescaleDB extension: {e}")
         raise
 
+
+
 async def run_alembic_migrations():
     """Run Alembic migrations"""
     try:
-        # Run alembic upgrade from the correct working directory
+        # Set PYTHONPATH to include the app directory
+        env = os.environ.copy()
+        env['PYTHONPATH'] = '/app'
+        
+        # Try to run alembic upgrade
         result = subprocess.run([
             sys.executable, "-m", "alembic", "upgrade", "head"
-        ], capture_output=True, text=True, cwd="/app")
+        ], capture_output=True, text=True, cwd="/app", env=env)
         
         if result.returncode == 0:
             logger.info("Alembic migrations completed successfully")
