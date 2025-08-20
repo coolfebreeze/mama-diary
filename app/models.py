@@ -1,5 +1,5 @@
-from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import DateTime, Integer, Text, JSON, DateTime as DT, text, Index
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import DateTime, Integer, Text, JSON, DateTime as DT, text, Index, PrimaryKeyConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from .db import Base
 import logging
@@ -17,10 +17,12 @@ class UsageEvent(Base):
         Index("ix_usage_events_service_model", "service", "model", "event_time"),
         Index("ix_usage_events_status_time", "status_code", "event_time"),
         Index("ix_usage_events_provider", "provider", "event_time"),
+        # TimescaleDB requirement: Primary Key must include event_time (partitioning key)
+        PrimaryKeyConstraint("event_time", "event_id"),
         {"schema": SCHEMA}
     )
 
-    event_id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    event_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
     event_time: Mapped[DT] = mapped_column(DateTime(timezone=True), nullable=False)
     user_id: Mapped[str] = mapped_column(Text, nullable=False)
     team: Mapped[str] = mapped_column(Text, nullable=False)
@@ -54,6 +56,14 @@ class MessageArchive(Base):
     prompt_full: Mapped[str | None] = mapped_column(Text)
     response_full: Mapped[str | None] = mapped_column(Text)
     stored_at: Mapped[DT] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    # Relationship without FK (TimescaleDB doesn't support FK to hypertables)
+    usage_event = relationship(
+        "UsageEvent",
+        primaryjoin="MessageArchive.event_id==UsageEvent.event_id",
+        viewonly=True,  # Read-only relationship without FK
+        uselist=False
+    )
 
     def __repr__(self):
         return f"<MessageArchive(event_id={self.event_id}, user_id={self.user_id})>"
