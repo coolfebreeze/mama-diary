@@ -8,6 +8,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     http_proxy=${http_proxy} \
     https_proxy=${https_proxy}
 
+# Copy custom sources.list for better connectivity
+COPY sources.list /etc/apt/sources.list
+
 # COPY pip.conf /etc/pip.conf  # Optional: uncomment if you have pip.conf
 
 # Install build dependencies
@@ -31,6 +34,9 @@ FROM python:3.11-slim-bookworm AS production
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PATH="/opt/venv/bin:$PATH"
+
+# Copy custom sources.list for runtime stage too
+COPY sources.list /etc/apt/sources.list
 
 # Install runtime dependencies
 RUN set -eux; \
