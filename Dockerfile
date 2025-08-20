@@ -51,6 +51,8 @@ RUN groupadd -r app && useradd -r -g app app
 COPY --from=builder /opt/venv /opt/venv
 WORKDIR /app
 COPY app/ ./app/
+COPY alembic.ini .
+COPY alembic/ ./alembic/
 RUN mkdir -p /app/logs /app/data && chown -R app:app /app
 USER app
 

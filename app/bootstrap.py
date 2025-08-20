@@ -20,17 +20,19 @@ async def ensure_timescale_extension(engine: AsyncEngine):
 async def run_alembic_migrations():
     """Run Alembic migrations"""
     try:
-        # Run alembic upgrade
+        # Run alembic upgrade from the correct working directory
         result = subprocess.run([
             sys.executable, "-m", "alembic", "upgrade", "head"
-        ], capture_output=True, text=True, cwd=".")
+        ], capture_output=True, text=True, cwd="/app")
         
         if result.returncode == 0:
             logger.info("Alembic migrations completed successfully")
             if result.stdout:
                 logger.debug(f"Alembic output: {result.stdout}")
         else:
-            logger.error(f"Alembic migration failed: {result.stderr}")
+            logger.error(f"Alembic migration failed. Return code: {result.returncode}")
+            logger.error(f"STDOUT: {result.stdout}")
+            logger.error(f"STDERR: {result.stderr}")
             raise Exception(f"Alembic migration failed: {result.stderr}")
             
     except Exception as e:
