@@ -98,9 +98,9 @@ def upgrade() -> None:
     $$ LANGUAGE plpgsql;
     """)
     
-    # Create trigger for FK emulation
+    # Create trigger for FK emulation (DROP and CREATE separated for asyncpg compatibility)
+    op.execute("DROP TRIGGER IF EXISTS trg_message_archives_check_fk ON analytics.message_archives;")
     op.execute("""
-    DROP TRIGGER IF EXISTS trg_message_archives_check_fk ON analytics.message_archives;
     CREATE TRIGGER trg_message_archives_check_fk
     BEFORE INSERT OR UPDATE OF event_id ON analytics.message_archives
     FOR EACH ROW EXECUTE FUNCTION analytics.fn_check_usage_event_exists();
@@ -117,9 +117,9 @@ def upgrade() -> None:
     $$ LANGUAGE plpgsql;
     """)
     
-    # Create trigger for cascade delete
+    # Create trigger for cascade delete (DROP and CREATE separated for asyncpg compatibility)
+    op.execute("DROP TRIGGER IF EXISTS trg_usage_events_cascade_delete ON analytics.usage_events;")
     op.execute("""
-    DROP TRIGGER IF EXISTS trg_usage_events_cascade_delete ON analytics.usage_events;
     CREATE TRIGGER trg_usage_events_cascade_delete
     AFTER DELETE ON analytics.usage_events
     FOR EACH ROW EXECUTE FUNCTION analytics.fn_usage_events_cascade_delete();
