@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     API_WORKERS: int = 4
     
     # Security settings
+    ANALYTICS_TOKEN: str = "your-secret-analytics-token"
     MAX_BULK_SIZE: int = 1000  # Maximum items per bulk request
     MAX_GZIP_SIZE: int = 10 * 1024 * 1024  # 10MB max gzip size
     RATE_LIMIT_PER_MINUTE: int = 1000

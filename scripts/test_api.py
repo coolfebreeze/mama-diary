@@ -9,8 +9,14 @@ import gzip
 import uuid
 import time
 import requests
+import os
 from datetime import datetime, timezone
 from typing import List, Dict, Any
+
+
+def get_auth_token():
+    """Get authentication token from environment or use default"""
+    return os.getenv("ANALYTICS_TOKEN", "your-secret-analytics-token")
 
 
 def create_test_events(count: int = 10) -> List[Dict[str, Any]]:
@@ -64,6 +70,13 @@ def compress_data(data: Dict[str, Any]) -> bytes:
     return gzip.compress(json_str.encode('utf-8'))
 
 
+def get_auth_headers(token: str = None):
+    """Get authentication headers"""
+    if token is None:
+        token = get_auth_token()
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_health_check(base_url: str = "http://localhost:8000"):
     """헬스체크 테스트"""
     print("🔍 Testing health check...")
@@ -100,14 +113,17 @@ def test_ingest_requests(base_url: str = "http://localhost:8000", use_gzip: bool
     events = create_test_events(5)
     payload = {"items": events}
     
+    # 인증 헤더 추가
+    headers = get_auth_headers()
+    
     try:
         if use_gzip:
             # gzip 압축
             compressed_data = compress_data(payload)
-            headers = {
+            headers.update({
                 "Content-Type": "application/json",
                 "Content-Encoding": "gzip"
-            }
+            })
             response = requests.post(
                 f"{base_url}/api/v1/ingest/requests:bulk",
                 data=compressed_data,
@@ -116,7 +132,7 @@ def test_ingest_requests(base_url: str = "http://localhost:8000", use_gzip: bool
             )
         else:
             # 일반 JSON
-            headers = {"Content-Type": "application/json"}
+            headers.update({"Content-Type": "application/json"})
             response = requests.post(
                 f"{base_url}/api/v1/ingest/requests:bulk",
                 json=payload,
@@ -141,14 +157,17 @@ def test_ingest_archives(base_url: str = "http://localhost:8000", use_gzip: bool
     archives = create_test_archives(3)
     payload = {"items": archives}
     
+    # 인증 헤더 추가
+    headers = get_auth_headers()
+    
     try:
         if use_gzip:
             # gzip 압축
             compressed_data = compress_data(payload)
-            headers = {
+            headers.update({
                 "Content-Type": "application/json",
                 "Content-Encoding": "gzip"
-            }
+            })
             response = requests.post(
                 f"{base_url}/api/v1/ingest/archives:bulk",
                 data=compressed_data,
@@ -157,7 +176,7 @@ def test_ingest_archives(base_url: str = "http://localhost:8000", use_gzip: bool
             )
         else:
             # 일반 JSON
-            headers = {"Content-Type": "application/json"}
+            headers.update({"Content-Type": "application/json"})
             response = requests.post(
                 f"{base_url}/api/v1/ingest/archives:bulk",
                 json=payload,
@@ -174,20 +193,77 @@ def test_ingest_archives(base_url: str = "http://localhost:8000", use_gzip: bool
         return False
 
 
+def test_authentication(base_url: str = "http://localhost:8000"):
+    """인증 테스트"""
+    print("\n🔐 Testing authentication...")
+    
+    # 테스트 데이터
+    events = create_test_events(1)
+    payload = {"items": events}
+    
+    # 1. 인증 없이 요청 (실패해야 함)
+    try:
+        response = requests.post(
+            f"{base_url}/api/v1/ingest/requests:bulk",
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=10
+        )
+        print(f"No auth - Status: {response.status_code}")
+        print(f"No auth - Response: {response.json()}")
+    except Exception as e:
+        print(f"No auth - Error: {e}")
+    
+    # 2. 잘못된 토큰으로 요청 (실패해야 함)
+    try:
+        headers = {"Authorization": "Bearer wrong-token", "Content-Type": "application/json"}
+        response = requests.post(
+            f"{base_url}/api/v1/ingest/requests:bulk",
+            json=payload,
+            headers=headers,
+            timeout=10
+        )
+        print(f"Wrong token - Status: {response.status_code}")
+        print(f"Wrong token - Response: {response.json()}")
+    except Exception as e:
+        print(f"Wrong token - Error: {e}")
+    
+    # 3. 올바른 토큰으로 요청 (성공해야 함)
+    try:
+        headers = get_auth_headers()
+        headers.update({"Content-Type": "application/json"})
+        response = requests.post(
+            f"{base_url}/api/v1/ingest/requests:bulk",
+            json=payload,
+            headers=headers,
+            timeout=10
+        )
+        print(f"Correct token - Status: {response.status_code}")
+        print(f"Correct token - Response: {response.json()}")
+        return response.status_code == 200
+    except Exception as e:
+        print(f"Correct token - Error: {e}")
+        return False
+
+
 def test_error_handling(base_url: str = "http://localhost:8000"):
     """에러 처리 테스트"""
     print("\n⚠️ Testing error handling...")
     
+    # 인증 헤더
+    headers = get_auth_headers()
+    
     # 잘못된 JSON 테스트
     try:
+        headers.update({"Content-Type": "application/json"})
         response = requests.post(
             f"{base_url}/api/v1/ingest/requests:bulk",
             data="invalid json",
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             timeout=10
         )
         print(f"Invalid JSON - Status: {response.status_code}")
-        print(f"Response: {response.json()}")
+        print(f"Invalid JSON - Response: {response.json()}")
     except Exception as e:
         print(f"Invalid JSON test failed: {e}")
     
@@ -195,14 +271,15 @@ def test_error_handling(base_url: str = "http://localhost:8000"):
     try:
         large_events = create_test_events(2000)  # 기본 제한 초과
         payload = {"items": large_events}
+        headers.update({"Content-Type": "application/json"})
         response = requests.post(
             f"{base_url}/api/v1/ingest/requests:bulk",
             json=payload,
-            headers={"Content-Type": "application/json"},
+            headers=headers,
             timeout=10
         )
         print(f"Large batch - Status: {response.status_code}")
-        print(f"Response: {response.json()}")
+        print(f"Large batch - Response: {response.json()}")
     except Exception as e:
         print(f"Large batch test failed: {e}")
 
@@ -218,6 +295,7 @@ def main():
     tests = [
         ("Health Check", lambda: test_health_check(base_url)),
         ("API Info", lambda: test_api_info(base_url)),
+        ("Authentication", lambda: test_authentication(base_url)),
         ("Usage Events (JSON)", lambda: test_ingest_requests(base_url, False)),
         ("Usage Events (gzip)", lambda: test_ingest_requests(base_url, True)),
         ("Message Archives (JSON)", lambda: test_ingest_archives(base_url, False)),

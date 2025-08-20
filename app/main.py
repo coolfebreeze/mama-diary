@@ -4,6 +4,7 @@ from datetime import datetime
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.openapi.utils import get_openapi
 from contextlib import asynccontextmanager
 from .api_ingest import router as ingest_router
 from .db import engine, check_db_connection
@@ -61,6 +62,40 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
+def custom_openapi():
+    """Custom OpenAPI schema with authentication"""
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    openapi_schema = get_openapi(
+        title="Analytics API",
+        version="1.0.0",
+        description="LLM usage analytics ingestion API with TimescaleDB",
+        routes=app.routes,
+    )
+    
+    # Add security scheme
+    openapi_schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "description": "Analytics token for API access"
+        }
+    }
+    
+    # Add security requirement to all endpoints
+    for path in openapi_schema["paths"]:
+        if path.startswith("/api/"):  # Only protect API endpoints
+            for method in openapi_schema["paths"][path]:
+                if method in ["post", "put", "delete", "patch"]:
+                    openapi_schema["paths"][path][method]["security"] = [
+                        {"BearerAuth": []}
+                    ]
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Analytics API",
@@ -68,6 +103,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Set custom OpenAPI schema
+app.openapi = custom_openapi
 
 # Add CORS middleware
 app.add_middleware(
@@ -119,9 +157,11 @@ async def root():
         "name": "Analytics API",
         "version": "1.0.0",
         "description": "LLM usage analytics ingestion API",
+        "authentication": "Bearer token required for API endpoints",
         "endpoints": {
             "health": "/healthz",
             "ingest_requests": "/api/v1/ingest/requests:bulk",
-            "ingest_archives": "/api/v1/ingest/archives:bulk"
+            "ingest_archives": "/api/v1/ingest/archives:bulk",
+            "docs": "/docs"
         }
     }

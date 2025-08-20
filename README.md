@@ -9,6 +9,7 @@ PostgreSQL + TimescaleDB를 사용한 LLM 사용량 분석 수집 API입니다. 
 - **멱등성 보장**: event_id 기반 중복 제거
 - **자동 관리**: 압축, 보존 정책 자동화
 - **연속 집계**: 실시간 통계 뷰 제공
+- **Bearer 토큰 인증**: 간단하고 안전한 API 인증
 - **Docker Compose**: 완전한 개발/운영 환경
 
 ## 아키텍처
@@ -17,8 +18,9 @@ PostgreSQL + TimescaleDB를 사용한 LLM 사용량 분석 수집 API입니다. 
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Client Apps   │───▶│   FastAPI API   │───▶│  TimescaleDB    │
 │                 │    │                 │    │   (PostgreSQL)  │
-│ - gzip bulk     │    │ - Validation    │    │ - Hypertables   │
-│ - JSON payload  │    │ - Error handling│    │ - Compression   │
+│ - Bearer Token  │    │ - Auth Check    │    │ - Hypertables   │
+│ - gzip bulk     │    │ - Validation    │    │ - Compression   │
+│ - JSON payload  │    │ - Error handling│    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
@@ -30,7 +32,7 @@ PostgreSQL + TimescaleDB를 사용한 LLM 사용량 분석 수집 API입니다. 
 # 환경 변수 파일 복사
 cp env.example .env
 
-# 필요한 값 수정
+# 필요한 값 수정 (특히 ANALYTICS_TOKEN)
 vim .env
 ```
 
@@ -74,12 +76,42 @@ curl http://localhost:8000/
 open http://localhost:8000/docs
 ```
 
+## 인증
+
+API 엔드포인트는 Bearer 토큰 인증을 사용합니다.
+
+### 토큰 설정
+
+```bash
+# .env 파일에서 설정
+ANALYTICS_TOKEN=your-secret-analytics-token-here
+```
+
+### API 요청 예시
+
+```bash
+# 사용량 이벤트 수집
+curl -X POST "http://localhost:8000/api/v1/ingest/requests:bulk" \
+  -H "Authorization: Bearer your-secret-analytics-token-here" \
+  -H "Content-Type: application/json" \
+  -H "Content-Encoding: gzip" \
+  --data-binary @events.json.gz
+
+# 메시지 아카이브 수집
+curl -X POST "http://localhost:8000/api/v1/ingest/archives:bulk" \
+  -H "Authorization: Bearer your-secret-analytics-token-here" \
+  -H "Content-Type: application/json" \
+  -H "Content-Encoding: gzip" \
+  --data-binary @archives.json.gz
+```
+
 ## API 엔드포인트
 
 ### 사용량 이벤트 수집
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/ingest/requests:bulk" \
+  -H "Authorization: Bearer your-token" \
   -H "Content-Type: application/json" \
   -H "Content-Encoding: gzip" \
   --data-binary @events.json.gz
@@ -89,6 +121,7 @@ curl -X POST "http://localhost:8000/api/v1/ingest/requests:bulk" \
 
 ```bash
 curl -X POST "http://localhost:8000/api/v1/ingest/archives:bulk" \
+  -H "Authorization: Bearer your-token" \
   -H "Content-Type: application/json" \
   -H "Content-Encoding: gzip" \
   --data-binary @archives.json.gz
@@ -138,6 +171,7 @@ CREATE TABLE analytics.message_archives (
 |--------|--------|------|
 | `DB_URL` | `postgresql+asyncpg://user:pass@pg:5432/analytics` | 데이터베이스 연결 URL |
 | `DB_POOL_SIZE` | `10` | 연결 풀 크기 |
+| `ANALYTICS_TOKEN` | `your-secret-analytics-token` | API 인증 토큰 |
 | `MAX_BULK_SIZE` | `1000` | 배치당 최대 아이템 수 |
 | `MAX_GZIP_SIZE` | `10485760` | 최대 gzip 크기 (10MB) |
 | `COMPRESSION_AFTER_DAYS` | `7` | 압축 시작 일수 |
@@ -179,6 +213,16 @@ python -m alembic upgrade head
 
 # 새 마이그레이션 생성
 python -m alembic revision --autogenerate -m "Add new feature"
+```
+
+### API 테스트
+
+```bash
+# 환경 변수 설정
+export ANALYTICS_TOKEN="your-secret-analytics-token-here"
+
+# 테스트 실행
+python scripts/test_api.py
 ```
 
 ## 모니터링
@@ -231,33 +275,43 @@ ALTER SYSTEM SET timescaledb.max_background_workers = 8;
 ## 보안 고려사항
 
 1. **환경 변수**: 민감한 정보는 `.env` 파일에 저장
-2. **네트워크**: 프로덕션에서는 방화벽 설정
-3. **인증**: 필요시 API 키 또는 JWT 추가
-4. **CORS**: 프로덕션에서는 허용 도메인 제한
+2. **토큰 관리**: `ANALYTICS_TOKEN`을 안전하게 관리
+3. **네트워크**: 프로덕션에서는 방화벽 설정
+4. **HTTPS**: 프로덕션에서는 HTTPS 사용
+5. **CORS**: 프로덕션에서는 허용 도메인 제한
 
 ## 문제 해결
 
 ### 일반적인 문제
 
-1. **데이터베이스 연결 실패**
+1. **인증 실패**
+   ```bash
+   # 토큰 확인
+   echo $ANALYTICS_TOKEN
+   
+   # 헤더 확인
+   curl -v -H "Authorization: Bearer your-token" http://localhost:8000/api/v1/ingest/requests:bulk
+   ```
+
+2. **데이터베이스 연결 실패**
    ```bash
    docker-compose logs postgres
    docker-compose restart postgres
    ```
 
-2. **TimescaleDB 확장 로드 실패**
+3. **TimescaleDB 확장 로드 실패**
    ```sql
    CREATE EXTENSION IF NOT EXISTS timescaledb;
    ```
 
-3. **메모리 부족**
+4. **메모리 부족**
    ```bash
    # Docker 메모리 제한 증가
    docker-compose down
    docker system prune
    ```
 
-4. **가상환경 문제**
+5. **가상환경 문제**
    ```bash
    # 가상환경 재생성
    rm -rf venv

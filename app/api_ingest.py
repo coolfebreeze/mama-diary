@@ -12,6 +12,7 @@ from .db import get_db
 from .models import UsageEvent, MessageArchive
 from .schemas import BulkEvents, BulkArchives, IngestResponse
 from .config import settings
+from .auth import require_analytics_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -137,7 +138,8 @@ async def _individual_insert_archives(session: AsyncSession, archives: List[dict
 @router.post("/v1/ingest/requests:bulk", response_model=IngestResponse)
 async def ingest_requests(
     req: Request, 
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
+    token: str = Depends(require_analytics_token())
 ):
     """Bulk ingest usage events with gzip support and validation"""
     
@@ -201,7 +203,8 @@ async def ingest_requests(
 @router.post("/v1/ingest/archives:bulk", response_model=IngestResponse)
 async def ingest_archives(
     req: Request, 
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
+    token: str = Depends(require_analytics_token())
 ):
     """Bulk ingest message archives with gzip support and validation"""
     
