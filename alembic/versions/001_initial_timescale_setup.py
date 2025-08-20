@@ -54,7 +54,7 @@ def upgrade() -> None:
         );
     """)
     
-    # Create message_archives table
+    # Create message_archives table (FK 제거 - TimescaleDB 제한)
     op.create_table('message_archives',
         sa.Column('event_id', postgresql.UUID(as_uuid=False), nullable=False),
         sa.Column('user_id', sa.Text(), nullable=False),
@@ -62,7 +62,7 @@ def upgrade() -> None:
         sa.Column('prompt_full', sa.Text(), nullable=True),
         sa.Column('response_full', sa.Text(), nullable=True),
         sa.Column('stored_at', sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(['event_id'], ['analytics.usage_events.event_id'], ondelete='CASCADE'),
+        # FK 제거! TimescaleDB가 하이퍼테이블 참조 FK를 금지함
         sa.PrimaryKeyConstraint('event_id'),
         schema='analytics'
     )
@@ -75,12 +75,55 @@ def upgrade() -> None:
     op.create_index('idx_usage_events_status_time', 'usage_events', ['status_code', 'event_time'], unique=False, schema='analytics')
     op.create_index('idx_usage_events_provider', 'usage_events', ['provider', 'event_time'], unique=False, schema='analytics')
     
-    # Create unique index for event_id (for foreign key reference) - includes event_time
-    op.create_index('idx_usage_events_event_id_unique', 'usage_events', ['event_time', 'event_id'], unique=True, schema='analytics')
+    # Create non-unique index for event_id (for FK emulation and fast lookups)
+    op.execute("CREATE INDEX IF NOT EXISTS idx_usage_events_event_id ON analytics.usage_events (event_id);")
     
     op.create_index('idx_message_archives_user', 'message_archives', ['user_id'], unique=False, schema='analytics')
     op.create_index('idx_message_archives_service', 'message_archives', ['service'], unique=False, schema='analytics')
     op.create_index('idx_message_archives_stored_at', 'message_archives', ['stored_at'], unique=False, schema='analytics')
+    
+    # Create trigger function for FK emulation (insert/update validation)
+    op.execute("""
+    CREATE OR REPLACE FUNCTION analytics.fn_check_usage_event_exists()
+    RETURNS trigger AS $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM analytics.usage_events ue
+        WHERE ue.event_id = NEW.event_id
+      ) THEN
+        RAISE EXCEPTION 'event_id % not found in analytics.usage_events', NEW.event_id;
+      END IF;
+      RETURN NEW;
+    END
+    $$ LANGUAGE plpgsql;
+    """)
+    
+    # Create trigger for FK emulation
+    op.execute("""
+    DROP TRIGGER IF EXISTS trg_message_archives_check_fk ON analytics.message_archives;
+    CREATE TRIGGER trg_message_archives_check_fk
+    BEFORE INSERT OR UPDATE OF event_id ON analytics.message_archives
+    FOR EACH ROW EXECUTE FUNCTION analytics.fn_check_usage_event_exists();
+    """)
+    
+    # Create trigger function for cascade delete emulation
+    op.execute("""
+    CREATE OR REPLACE FUNCTION analytics.fn_usage_events_cascade_delete()
+    RETURNS trigger AS $$
+    BEGIN
+      DELETE FROM analytics.message_archives WHERE event_id = OLD.event_id;
+      RETURN OLD;
+    END
+    $$ LANGUAGE plpgsql;
+    """)
+    
+    # Create trigger for cascade delete
+    op.execute("""
+    DROP TRIGGER IF EXISTS trg_usage_events_cascade_delete ON analytics.usage_events;
+    CREATE TRIGGER trg_usage_events_cascade_delete
+    AFTER DELETE ON analytics.usage_events
+    FOR EACH ROW EXECUTE FUNCTION analytics.fn_usage_events_cascade_delete();
+    """)
     
     # Configure compression
     op.execute("""
@@ -99,6 +142,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Remove triggers first
+    op.execute("DROP TRIGGER IF EXISTS trg_usage_events_cascade_delete ON analytics.usage_events;")
+    op.execute("DROP TRIGGER IF EXISTS trg_message_archives_check_fk ON analytics.message_archives;")
+    
+    # Remove trigger functions
+    op.execute("DROP FUNCTION IF EXISTS analytics.fn_usage_events_cascade_delete();")
+    op.execute("DROP FUNCTION IF EXISTS analytics.fn_check_usage_event_exists();")
+    
     # Remove policies
     op.execute("SELECT remove_retention_policy('analytics.usage_events');")
     op.execute("SELECT remove_compression_policy('analytics.usage_events');")
