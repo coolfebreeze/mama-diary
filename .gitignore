@@ -130,7 +130,6 @@ logs/
 data/
 
 # Docker
-.dockerignore
 
 # IDE
 .vscode/
