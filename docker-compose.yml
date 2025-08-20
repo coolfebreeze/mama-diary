@@ -80,7 +80,8 @@ services:
         max-file: "3"
     security_opt:
       - no-new-privileges:true
-    read_only: true
+    # read_only: true  # Temporarily disabled for Alembic migrations
+    # Alternative: mount specific directories as read-only
     tmpfs:
       - /tmp
       - /var/tmp
